@@ -7,9 +7,9 @@ def check_disk_encryption():
     system = platform.system()
     if system == "Windows":
         try:
-            result = subprocess.run(["powershell", "-command", "Get-BitLockerVolume | Where-Object {$_.MountPoint -eq 'C:'} | Select-Object EncryptionMethod"], capture_output=True, text=True)
+            result = subprocess.run(["powershell", "-command", "(New-Object -ComObject Shell.Application).NameSpace('C:').Self.ExtendedProperty('System.Volume.BitLockerProtection')"], capture_output=True, text=True)
             output = result.stdout.strip()
-            if "AES" in output:
+            if "1" in output:
                 return True
             else:
                 return False
