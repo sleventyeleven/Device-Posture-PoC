@@ -107,9 +107,14 @@ def check_screen_lockout():
     system = platform.system()
     if system == "Windows":
         try:
-            result = subprocess.run(["powershell", "-command", "(Get-CimInstance -ClassName Win32_ScreenSaverSettings).LockTimeOut"], capture_output=True, text=True)
+            result = subprocess.run(["powershell", "-command", "(Get-ItemProperty -Path 'HKCU:/Control Panel/Desktop').ScreenSaveActive"], capture_output=True, text=True)
             output = result.stdout.strip()
-            return int(output) > 0 #Check if timeout is greater than zero
+            if output == '1':
+                result = subprocess.run(["powershell", "-command", "(Get-ItemProperty -Path 'HKCU:/Control Panel/Desktop').DelayLockInterval"], capture_output=True, text=True)
+                output = result.stdout.strip()
+                return int(output) > 0 #Check if timeout is greater than zero
+            else:
+                return False # if the screen saver never activates the lockout delay doesn't begin
         except Exception as e:
             print(f"Error checking screen lockout status: {e}")
             return False
