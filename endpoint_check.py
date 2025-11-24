@@ -31,18 +31,44 @@ def check_disk_encryption():
     else:
         return None
 
-def check_edr_agent():
-    # Mock EDR agent check. Replace "EDRProcessName" with the actual process name.
-    process_name = "EDRProcessName"  # Example: "CrowdStrikeAgent.exe" or "carbonblack.pid"
-    try:
-        result = subprocess.run(["ps", "aux"], capture_output=True, text=True) #For MacOs
-        if system == "Windows":
-            result = subprocess.run(["tasklist"], capture_output=True, text=True)
-        output = result.stdout
-        return process_name in output
-    except Exception as e:
-        print(f"Error checking EDR agent status: {e}")
-        return False
+def check_edr_agent(process_names):
+    system = platform.system()
+    if system == "Windows":
+        try:
+            result = subprocess.run(f'tasklist /FI "IMAGENAME eq {process_names['Windows']}"', shell=True, capture_output=True, text=True)
+            output = result.stdout.strip()
+            if output == "INFO: No tasks are running which match the specified criteria.":
+                return False
+            else:
+                return True
+        except Exception as e:
+            print(f"Error checking EDR agent status: {e}")
+            return False
+    if system == "Darwin":
+        try:
+            result = subprocess.run(["pgrep", "-l", f"{process_names['Windows']}"], capture_output=True, text=True)
+            output = result.stdout.strip()
+            if output:
+                return True
+            else:
+                return False
+        except Exception as e:
+            print(f"Error checking EDR agent status: {e}")
+            return False
+
+def check_defender_status():
+    system = platform.system()
+    if system == "Windows": # Windows only
+        try:
+            for av_check, expected in {'AntivirusEnabled': True, 'AntispywareEnabled': True, 'AMServiceEnabled': True, 'IoavProtectionEnabled': True, 'RealTimeProtectionEnabled': True, 'DefenderSignaturesOutOfDate': False}.items():
+                result = subprocess.run(["powershell", "-command", f"(Get-MpComputerStatus).{av_check}"], capture_output=True, text=True)
+                output = result.stdout.strip()
+                if output != str(expected):
+                    return False
+            return True
+        except Exception as e:
+            print(f"Error checking Defender status: {e}")
+            return False
 
 def check_firewall_status():
     system = platform.system()
@@ -72,9 +98,9 @@ def check_jailbreak():
   system = platform.system()
   if system == "Darwin": #macOS only
       try:
-          result = subprocess.run(["ioreg", "-c", "IOPlatformExpert"], capture_output=True, text=True)
+          result = subprocess.run(["csrutil", "status"], capture_output=True, text=True)
           output = result.stdout
-          if "SecureBootModel" in output and "Disabled" in output:
+          if  "disabled" in output:
               return True #Indicates potential jailbreak
           else:
               return False
@@ -119,7 +145,7 @@ def check_screen_lockout():
         except Exception as e:
             print(f"Error checking screen lockout status: {e}")
             return False
-    elif system == "Darwin": #macOS only
+    elif system == "Darwin":
         try:
             result = subprocess.run(["defaults", "read", "com.apple.screensaver", "idleTime"], capture_output=True, text=True)
             output = result.stdout.strip()
@@ -128,7 +154,7 @@ def check_screen_lockout():
             print(f"Error checking screen lockout status: {e}")
             return False
 
-def check_device_trust_certificate(cert_subject=platform.node()):
+def check_device_trust_certificate(cert_subject):
     system = platform.system()
     cert_result = {"present": False, "valid_until": None}
     if system == "Windows":
@@ -139,10 +165,10 @@ def check_device_trust_certificate(cert_subject=platform.node()):
         pattern = re.compile(r"Subject:.*?CN=([^,\n]+)", re.IGNORECASE)
         for line in output.splitlines():
             match = pattern.search(line)
-            if match and cert_subject.lower() in m.group(1).lower():
+            if match and cert_subject.lower() in match.group(1).lower():
                 cert_result["present"] = True
                 # Look ahead for NotAfter field
-                notafter_match = re.search(r"NotAfter:\s+(.+)", out, re.IGNORECASE)
+                notafter_match = re.search(r"NotAfter:\s+(.+)", output, re.IGNORECASE)
                 if notafter_match:
                     try:
                         dt = datetime.strptime(
@@ -177,20 +203,19 @@ def check_device_trust_certificate(cert_subject=platform.node()):
     return cert_result
 
 if __name__ == "__main__":
-    system = platform.system()
-    print(f"Operating System: {system}")
-
     results = {
         "timestamp_utc": datetime.now().replace(tzinfo=timezone.utc).isoformat(),
         "os_type": platform.system(),
         "os_version": platform.version(),
+        "hostname": platform.node(),
         "disk_encryption": check_disk_encryption(),
-        "edr_agent": check_edr_agent(),
+        "edr_agent": check_edr_agent(process_names = {"Windows": 'MsMpEng.exe', "MacOS": 'syspolicyd'}),
         "firewall_status": check_firewall_status(),
-        "jailbreak": check_jailbreak() if system == "Darwin" else None, #Only run on macOS
+        "defender_status": check_defender_status() if platform.system() == "Windows" else None, #Only run on windows
+        "jailbreak": check_jailbreak() if platform.system() == "Darwin" else None, #Only run on macOS
         "password_required": check_password_required(),
         "screen_lockout": check_screen_lockout(),
-        "device_trust_certificate": check_device_trust_certificate()
+        "device_trust_certificate": check_device_trust_certificate(cert_subject=platform.node()) # default search for subject based on hostname
     }
 
     print(json.dumps(results, indent=4))
