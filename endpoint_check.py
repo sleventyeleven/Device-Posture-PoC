@@ -1,7 +1,8 @@
 import platform
 import subprocess
 import json
-import os
+import re
+from datetime import datetime, timezone
 
 def check_disk_encryption():
     system = platform.system()
@@ -127,17 +128,62 @@ def check_screen_lockout():
             print(f"Error checking screen lockout status: {e}")
             return False
 
-def check_device_trust_certificate():
-    # Implement certificate validation logic here.  This will depend on how the certificates are stored and managed.
-    # Example: Check for a specific file in a known location.
-    cert_path = "/path/to/device_trust_certificate.pem" #Replace with actual path
-    return os.path.exists(cert_path)
+def check_device_trust_certificate(cert_subject=platform.node()):
+    system = platform.system()
+    cert_result = {"present": False, "valid_until": None}
+    if system == "Windows":
+        # Use certutil to enumerate certificates in My store
+        result = subprocess.run(["certutil", "-store", "My"], capture_output=True, text=True)
+        output = result.stdout
+        # Find block with Subject matching the expected subject
+        pattern = re.compile(r"Subject:.*?CN=([^,\n]+)", re.IGNORECASE)
+        for line in output.splitlines():
+            match = pattern.search(line)
+            if match and cert_subject.lower() in m.group(1).lower():
+                cert_result["present"] = True
+                # Look ahead for NotAfter field
+                notafter_match = re.search(r"NotAfter:\s+(.+)", out, re.IGNORECASE)
+                if notafter_match:
+                    try:
+                        dt = datetime.strptime(
+                            notafter_match.group(1).strip(),
+                            "%b %d %H:%M:%S %Y %Z"
+                        )
+                        result["valid_until"] = dt.replace(tzinfo=timezone.utc).isoformat()
+                    except Exception:
+                        pass
+                break
+    elif system == "Darwin":
+        # security find-certificate -c "<subject>"
+        result = subprocess.run(["security", "find-certificate", "-c", cert_subject, "-p"], capture_output=True, text=True)
+        output = result.stdout
+        if output:
+            cert_result["present"] = True
+            # Extract NotAfter date using openssl
+            result = subprocess.run(["openssl", "x509", "-noout", "-enddate"], capture_output=True, text=True)
+            cert_out = result.stdout
+            match = re.search(r"notAfter=(.+)", cert_out)
+            if match:
+                try:
+                    dt = datetime.strptime(
+                        match.group(1).strip(),
+                        "%b %d %H:%M:%S %Y %Z"
+                    )
+                    cert_result["valid_until"] = dt.replace(tzinfo=timezone.utc).isoformat()
+                except Exception:
+                    pass
+    else:
+        return None
+    return cert_result
 
 if __name__ == "__main__":
     system = platform.system()
     print(f"Operating System: {system}")
 
     results = {
+        "timestamp_utc": datetime.now().replace(tzinfo=timezone.utc).isoformat(),
+        "os_type": platform.system(),
+        "os_version": platform.version(),
         "disk_encryption": check_disk_encryption(),
         "edr_agent": check_edr_agent(),
         "firewall_status": check_firewall_status(),
