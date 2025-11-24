@@ -35,7 +35,7 @@ def check_edr_agent(process_names):
     system = platform.system()
     if system == "Windows":
         try:
-            result = subprocess.run(f'tasklist /FI "IMAGENAME eq {process_names['Windows']}"', shell=True, capture_output=True, text=True)
+            result = subprocess.run(f"tasklist /FI \"IMAGENAME eq {process_names['Windows']}\"", shell=True, capture_output=True, text=True)
             output = result.stdout.strip()
             if output == "INFO: No tasks are running which match the specified criteria.":
                 return False
@@ -46,7 +46,7 @@ def check_edr_agent(process_names):
             return False
     if system == "Darwin":
         try:
-            result = subprocess.run(["pgrep", "-l", f"{process_names['Windows']}"], capture_output=True, text=True)
+            result = subprocess.run(["pgrep", "-l", f"{process_names['MacOS']}"], capture_output=True, text=True)
             output = result.stdout.strip()
             if output:
                 return True
