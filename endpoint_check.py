@@ -19,7 +19,7 @@ def check_disk_encryption():
             return False
     elif system == "Darwin":  # macOS
         try:
-            result = subprocess.run(["diskutil", "apfs", "encryptionstatus"], capture_output=True, text=True)
+            result = subprocess.run(["fdesetup", "status"], capture_output=True, text=True)
             output = result.stdout
             if "FileVault is On" in output:
                 return True
@@ -82,9 +82,9 @@ def check_firewall_status():
             return False
     elif system == "Darwin":  # macOS
         try:
-            result = subprocess.run(["pfctl", "-s", "rules"], capture_output=True, text=True)
+            result = subprocess.run(["/usr/libexec/ApplicationFirewall/socketfilterfw", "--getglobalstate"], capture_output=True, text=True)
             output = result.stdout
-            if "pass" not in output and "block" in output: #Basic check for active rules
+            if "enabled" in output:
                 return True
             else:
                 return False
@@ -112,7 +112,7 @@ def check_password_required():
     system = platform.system()
     if system == "Windows":
         try:
-            result = subprocess.run(["powershell", "-command", "(Get-CimInstance -ClassName Win32_UserAccount | Where-Object {$_.Name -eq 'Administrator'}).PasswordRequired"], capture_output=True, text=True)
+            result = subprocess.run(["powershell", "-command", "(Get-CimInstance -ClassName Win32_UserAccount | Where-Object {$_.Name -eq \"$($env:USERNAME)\"}).PasswordRequired"], capture_output=True, text=True)
             output = result.stdout.strip()
             return "True" in output
         except Exception as e:
@@ -120,10 +120,12 @@ def check_password_required():
             return False
     elif system == "Darwin": #macOS only
         try:
-            result = subprocess.run(["dscl", ".", "-read", "/Users/root", "Password"], capture_output=True, text=True)
-            output = result.stdout
-            if output != "":
-                return True
+            result = subprocess.run(["defaults", "read", "com.apple.screensaver", "askForPasswordDelay"], capture_output=True, text=True)
+            output = result.stdout.strip()
+            if "does not exist" in result.stderr.strip():
+                return True #If no value is set the default is sleep after 15mins and require password after asleep for 5min
+            if int(output) > 0:
+                return True #Lockout time set and not zero (infinite)
             else:
                 return False
         except Exception as e:
@@ -149,7 +151,12 @@ def check_screen_lockout():
         try:
             result = subprocess.run(["defaults", "read", "com.apple.screensaver", "idleTime"], capture_output=True, text=True)
             output = result.stdout.strip()
-            return int(output) > 0 #Check if timeout is greater than zero
+            if "does not exist" in result.stderr.strip():
+                return True #If no value has been ever set the default is 20 minute lockout
+            if int(output) > 0:
+                return True #Lockout time set and not zero (infinite)
+            else:
+                return False
         except Exception as e:
             print(f"Error checking screen lockout status: {e}")
             return False
