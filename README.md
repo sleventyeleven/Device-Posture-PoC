@@ -4,7 +4,7 @@ Proof of concept python script to preform custom posture checks for a conditiona
 
 ## Purpose
 
-This script performs a basic security posture check on the machine it's run on to determine if it meets minimum security requirements for accessing sensitive systems. It is designed to be part of a lightweight agent or browser-based health check required before granting access to Included Health resources.
+This script performs a basic security posture check on the machine it's run on to determine if it meets minimum security requirements for accessing sensitive systems. It is designed to be part of a lightweight agent or browser-based health check required before granting access to protected resources.
 
 ## How to Run
 
